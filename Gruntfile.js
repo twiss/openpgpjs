@@ -117,14 +117,14 @@ module.exports = function(grunt) {
       coverage: {
         src: 'test',
         options: {
-          root: '.',
+          root: '../',
           timeout: 240000,
         }
       },
       coveralls: {
         src: ['test'],
         options: {
-          root: '.',
+          root: '../',
           timeout: 240000,
           coverage: true,
           reportFormats: ['cobertura','lcovonly']
