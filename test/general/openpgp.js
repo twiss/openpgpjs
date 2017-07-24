@@ -304,7 +304,8 @@ describe('OpenPGP.js public api tests', function() {
           passphrase: 'secret',
           numBits: 2048,
           unlocked: true,
-          keyExpirationTime: 0
+          keyExpirationTime: 0,
+          curve: ""
         }).calledOnce).to.be.true;
         expect(newKey.key).to.exist;
         expect(newKey.privateKeyArmored).to.exist;
@@ -320,7 +321,8 @@ describe('OpenPGP.js public api tests', function() {
           passphrase: undefined,
           numBits: 2048,
           unlocked: false,
-          keyExpirationTime: 0
+          keyExpirationTime: 0,
+          curve: ""
         }).calledOnce).to.be.true;
         expect(newKey.key).to.exist;
         done();
