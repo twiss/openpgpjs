@@ -666,7 +666,9 @@ Key.prototype.verifyPrimaryUser = async function(keys) {
     throw new Error('Could not find primary user');
   }
   const results = keys ? await user.verifyAllCertifications(primaryKey, keys) :
-    [{ keyid: primaryKey.keyid, valid: await user.verify(primaryKey) === enums.keyStatus.valid }];
+        [{ keyid: primaryKey.keyid,
+           valid: await user.verify(primaryKey) === enums.keyStatus.valid,
+           expires: await this.getExpirationTime() }];
   return results;
 };
 
@@ -769,12 +771,12 @@ User.prototype.sign = async function(primaryKey, privateKeys) {
  * Checks if a given certificate of the user is revoked
  * @param  {module:packet.SecretKey|
  *          module:packet.PublicKey} primaryKey    The primary key packet
- * @param  {module:packet.Signature}  certificate   The certificate to verify
+ * @param  {module:packet.Signature} certificate   The certificate to verify
  * @param  {module:packet.PublicSubkey|
  *          module:packet.SecretSubkey|
  *          module:packet.PublicKey|
  *          module:packet.SecretKey} key, optional The key to verify the signature
- * @param  {Date}                     date          Use the given date instead of the current time
+ * @param  {Date}                    date          Use the given date instead of the current time
  * @returns {Promise<Boolean>}                      True if the certificate is revoked
  * @async
  */
@@ -804,16 +806,8 @@ User.prototype.verifyCertificate = async function(primaryKey, certificate, keys,
   const results = await Promise.all(keys.map(async function(key) {
     if (!key.getKeyIds().some(id => id.equals(keyid))) { return; }
     const keyPacket = await key.getSigningKeyPacket(keyid, date);
-    if (certificate.revoked || await that.isRevoked(primaryKey, certificate, keyPacket)) {
-      return enums.keyStatus.revoked;
-    }
-    if (!(certificate.verified || await certificate.verify(keyPacket, dataToVerify))) {
-      return enums.keyStatus.invalid;
-    }
-    if (certificate.isExpired()) {
-      return enums.keyStatus.expired;
-    }
-    return enums.keyStatus.valid;
+    const results = await isDataVerified(primaryKey, that, dataToVerify, [certificate], keyPacket, date);
+    return results[0];
   }));
   return results.find(result => result !== undefined);
 };
@@ -822,7 +816,7 @@ User.prototype.verifyCertificate = async function(primaryKey, certificate, keys,
  * Verifies all user certificates
  * @param  {module:packet.SecretKey|
  *          module:packet.PublicKey} primaryKey The primary key packet
- * @param  {Array<module:key.Key>}    keys       Array of keys to verify certificate signatures
+ * @param  {Array<module:key.Key>}   keys       Array of keys to verify certificate signatures
  * @returns {Promise<Array<{keyid: module:type/keyid,
  *                          valid: Boolean}>>}   List of signer's keyid and validity of signature
  * @async
@@ -851,29 +845,18 @@ User.prototype.verify = async function(primaryKey) {
   if (!this.selfCertifications.length) {
     return enums.keyStatus.no_self_cert;
   }
-  const that = this;
+  this.selfCertifications = this.selfCertifications.sort((A, B) => A.created - B.created);
   const dataToVerify = { userid: this.userId || this.userAttribute, key: primaryKey };
   // TODO replace when Promise.some or Promise.any are implemented
   const results = [enums.keyStatus.invalid].concat(
-    await Promise.all(this.selfCertifications.map(async function(selfCertification) {
-      if (selfCertification.revoked || await that.isRevoked(primaryKey, selfCertification)) {
-        return enums.keyStatus.revoked;
-      }
-      if (!(selfCertification.verified || await selfCertification.verify(primaryKey, dataToVerify))) {
-        return enums.keyStatus.invalid;
-      }
-      if (selfCertification.isExpired()) {
-        return enums.keyStatus.expired;
-      }
-      return enums.keyStatus.valid;
-    })));
+    await isDataVerified(primaryKey, this, dataToVerify, this.selfCertifications));
   return results.some(status => status === enums.keyStatus.valid) ?
     enums.keyStatus.valid : results.pop();
 };
 
 /**
  * Update user with new components from specified user
- * @param  {module:key.User}             user       Source user to merge
+ * @param  {module:key.User}            user       Source user to merge
  * @param  {module:packet.SecretKey|
  *          module:packet.SecretSubkey} primaryKey primary key used for validation
  */
@@ -955,23 +938,10 @@ SubKey.prototype.verify = async function(primaryKey, date=new Date()) {
     return enums.keyStatus.expired;
   }
   // check subkey binding signatures
+  this.bindingSignatures = this.bindingSignatures.sort((A, B) => A.created - B.created);
   // note: binding signatures can have different keyFlags, so we verify all.
   const results = [enums.keyStatus.invalid].concat(
-    await Promise.all(this.bindingSignatures.map(async function(bindingSignature) {
-      // check binding signature is verified
-      if (!(bindingSignature.verified || await bindingSignature.verify(primaryKey, dataToVerify))) {
-        return enums.keyStatus.invalid;
-      }
-      // check binding signature is not revoked
-      if (bindingSignature.revoked || await that.isRevoked(primaryKey, bindingSignature, null, date)) {
-        return enums.keyStatus.revoked;
-      }
-      // check binding signature is not expired (ie, check for V4 expiration time)
-      if (bindingSignature.isExpired(date)) {
-        return enums.keyStatus.expired;
-      }
-      return enums.keyStatus.valid; // found a binding signature that passed all checks
-    }))
+    await isDataVerified(primaryKey, this, dataToVerify, this.bindingSignatures, null, date)
   );
   return results.some(status => status === enums.keyStatus.valid) ?
     enums.keyStatus.valid : results.pop();
@@ -1316,16 +1286,50 @@ async function wrapKeyObject(secretKeyPacket, secretSubkeyPacket, options) {
 }
 
 /**
+ * Checks if a given user certification or subkey binding signature is valid
+ * @param  {module:packet.SecretKey|
+ *          module:packet.PublicKey}        primaryKey   The primary key packet
+ * @param  {module:key.User|
+ *          module:key.SubKey}              object       The object to check
+ * @param  {Object}                         dataToVerify The data to check
+ * @param  {Array<module:packet.Signature>} signatures   The certificates or signatures to check
+ * @param  {module:packet.PublicSubkey|
+ *          module:packet.SecretSubkey|
+ *          module:packet.PublicKey|
+ *          module:packet.SecretKey}  key, optional The key packet to check the signature
+ * @param  {Date}                     date          Use the given date instead of the current time
+ * @returns {Promise<module:enums.keyStatus>}       Status of the signature
+ * @async
+ */
+async function isDataVerified(primaryKey, object, dataToVerify, signatures, key, date=new Date()) {
+  key = key || primaryKey;
+  const that = this;
+  // TODO define dataToVerify from object here.
+  return Promise.all(signatures.map(async function(signature) {
+    if (!(signature.verified || await signature.verify(key, dataToVerify))) {
+      return enums.keyStatus.invalid;
+    }
+    if (signature.revoked || await object.isRevoked(primaryKey, signature, key, date)) {
+      return enums.keyStatus.revoked;
+    }
+    if (signature.isExpired(date)) {
+      return enums.keyStatus.expired;
+    }
+    return enums.keyStatus.valid;
+  }));
+}
+
+/**
  * Checks if a given certificate or binding signature is revoked
  * @param  {module:packet.SecretKey|
- *          module:packet.PublicKey}       primaryKey   The primary key packet
+ *          module:packet.PublicKey}        primaryKey   The primary key packet
  * @param  {Object}                         dataToVerify The data to check
  * @param  {Array<module:packet.Signature>} revocations  The revocation signatures to check
  * @param  {module:packet.Signature}        signature    The certificate or signature to check
  * @param  {module:packet.PublicSubkey|
  *          module:packet.SecretSubkey|
  *          module:packet.PublicKey|
- *          module:packet.SecretKey} key, optional The key packet to check the signature
+ *          module:packet.SecretKey}  key, optional The key packet to check the signature
  * @param  {Date}                     date          Use the given date instead of the current time
  * @returns {Promise<Boolean>}                      True if the signature revokes the data
  * @async
