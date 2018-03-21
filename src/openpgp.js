@@ -111,13 +111,9 @@ export function destroyWorker() {
  * @static
  */
 
-export function generateKey({
-  userIds=[], passphrase, numBits=2048, unlocked=false, keyExpirationTime=0, curve="", date=new Date()
-} = {}) {
+export function generateKey({ userIds=[], passphrase="", numBits=2048, algorithm=enums.publicKey.rsa_encrypt_sign, unlocked=false, keyExpirationTime=0, curve="", date=new Date() }) {
   userIds = formatUserIds(userIds);
-  const options = {
-    userIds, passphrase, numBits, unlocked, keyExpirationTime, curve, date
-  };
+  const options = { userIds, passphrase, numBits,keyExpirationTime, curve, date };
 
   if (util.getWebCryptoAll() && numBits < 2048) {
     throw new Error('numBits should be 2048 or 4096, found: ' + numBits);
@@ -148,14 +144,10 @@ export function generateKey({
  * @async
  * @static
  */
-export function reformatKey({
-  privateKey, userIds=[], passphrase="", unlocked=false, keyExpirationTime=0
-} = {}) {
+export function reformatKey({privateKey, userIds=[], passphrase="", unlocked=false, keyExpirationTime=0} {
   userIds = formatUserIds(userIds);
 
-  const options = {
-    privateKey, userIds, passphrase, unlocked, keyExpirationTime
-  };
+  const options = { privateKey, userIds, passphrase, unlocked, keyExpirationTime };
 
   if (asyncProxy) {
     return asyncProxy.delegate('reformatKey', options);
@@ -490,36 +482,6 @@ function checkCleartextOrMessage(message) {
   if (!(message instanceof CleartextMessage) && !(message instanceof messageLib.Message)) {
     throw new Error('Parameter [message] needs to be of type Message or CleartextMessage');
   }
-}
-
-/**
- * Format user ids for internal use.
- */
-function formatUserIds(userIds) {
-  if (!userIds) {
-    return userIds;
-  }
-  userIds = toArray(userIds); // normalize to array
-  userIds = userIds.map(id => {
-    if (util.isString(id) && !util.isUserId(id)) {
-      throw new Error('Invalid user id format');
-    }
-    if (util.isUserId(id)) {
-      return id; // user id is already in correct format... no conversion necessary
-    }
-    // name and email address can be empty but must be of the correct type
-    id.name = id.name || '';
-    id.email = id.email || '';
-    if (!util.isString(id.name) || (id.email && !util.isEmailAddress(id.email))) {
-      throw new Error('Invalid user id format');
-    }
-    id.name = id.name.trim();
-    if (id.name.length > 0) {
-      id.name += ' ';
-    }
-    return id.name + '<' + id.email + '>';
-  });
-  return userIds;
 }
 
 /**
