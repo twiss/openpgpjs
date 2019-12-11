@@ -1671,7 +1671,7 @@ describe('OpenPGP.js public api tests', function() {
               await Promise.all([
                 encrypted,
                 openpgp.stream.toStream(encrypted),
-                new ReadableStream({
+                new openpgp.stream.ReadableStream({
                   start() {
                     this.remaining = encrypted.split('\n');
                   },
@@ -1905,7 +1905,7 @@ describe('OpenPGP.js public api tests', function() {
           it('Streaming encrypt and decrypt small message roundtrip', async function() {
             let plaintext = [];
             let i = 0;
-            const data = new ReadableStream({
+            const data = new openpgp.stream.ReadableStream({
               async pull(controller) {
                 if (i++ < 4) {
                   let randomBytes = await openpgp.crypto.random.getRandomBytes(10);

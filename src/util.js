@@ -117,7 +117,7 @@ export default {
     if (Object.prototype.isPrototypeOf(obj) && !Uint8Array.prototype.isPrototypeOf(obj)) {
       Object.entries(obj).forEach(([key, value]) => { // recursively search all children
         if (Object.prototype.toString.call(value) === '[object MessagePort]') {
-          obj[key] = new ReadableStream({
+          obj[key] = new stream.ReadableStream({
             pull(controller) {
               return new Promise(resolve => {
                 value.onmessage = evt => {

@@ -40,6 +40,7 @@
  */
 
 import stream from 'web-stream-tools';
+import { createReadableStreamWrapper } from '@mattiasbuelens/web-streams-adapter';
 import * as messageLib from './message';
 import { CleartextMessage } from './cleartext';
 import { generate, reformat } from './key';
@@ -48,6 +49,8 @@ import enums from './enums';
 import './polyfills';
 import util from './util';
 import AsyncProxy from './worker/async_proxy';
+
+const toNativeReadable = global.ReadableStream && createReadableStreamWrapper(global.ReadableStream);
 
 //////////////////////////
 //                      //
@@ -282,22 +285,22 @@ export function encryptKey({ privateKey, passphrase }) {
 /**
  * Encrypts message text/data with public keys, passwords or both at once. At least either public keys or passwords
  *   must be specified. If private keys are specified, those will be used to sign the message.
- * @param  {Message} message                      message to be encrypted as created by openpgp.message.fromText or openpgp.message.fromBinary
- * @param  {Key|Array<Key>} publicKeys            (optional) array of keys or single key, used to encrypt the message
- * @param  {Key|Array<Key>} privateKeys           (optional) private keys for signing. If omitted message will not be signed
- * @param  {String|Array<String>} passwords       (optional) array of passwords or a single password to encrypt the message
- * @param  {Object} sessionKey                    (optional) session key in the form: { data:Uint8Array, algorithm:String }
- * @param  {module:enums.compression} compression (optional) which compression algorithm to compress the message with, defaults to what is specified in config
- * @param  {Boolean} armor                        (optional) if the return values should be ascii armored or the message/signature objects
- * @param  {'web'|'node'|false} streaming         (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
- * @param  {Boolean} detached                     (optional) if the signature should be detached (if true, signature will be added to returned object)
- * @param  {Signature} signature                  (optional) a detached signature to add to the encrypted message
- * @param  {Boolean} returnSessionKey             (optional) if the unencrypted session key should be added to returned object
- * @param  {Boolean} wildcard                     (optional) use a key ID of 0 instead of the public key IDs
- * @param  {Date} date                            (optional) override the creation date of the message signature
- * @param  {Array} fromUserIds                    (optional) array of user IDs to sign with, one per key in `privateKeys`, e.g. [{ name:'Steve Sender', email:'steve@openpgp.org' }]
- * @param  {Array} toUserIds                      (optional) array of user IDs to encrypt for, one per key in `publicKeys`, e.g. [{ name:'Robert Receiver', email:'robert@openpgp.org' }]
- * @returns {Promise<Object>}                     Object containing encrypted (and optionally signed) message in the form:
+ * @param  {Message} message                          message to be encrypted as created by openpgp.message.fromText or openpgp.message.fromBinary
+ * @param  {Key|Array<Key>} publicKeys                (optional) array of keys or single key, used to encrypt the message
+ * @param  {Key|Array<Key>} privateKeys               (optional) private keys for signing. If omitted message will not be signed
+ * @param  {String|Array<String>} passwords           (optional) array of passwords or a single password to encrypt the message
+ * @param  {Object} sessionKey                        (optional) session key in the form: { data:Uint8Array, algorithm:String }
+ * @param  {module:enums.compression} compression     (optional) which compression algorithm to compress the message with, defaults to what is specified in config
+ * @param  {Boolean} armor                            (optional) if the return values should be ascii armored or the message/signature objects
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
+ * @param  {Boolean} detached                         (optional) if the signature should be detached (if true, signature will be added to returned object)
+ * @param  {Signature} signature                      (optional) a detached signature to add to the encrypted message
+ * @param  {Boolean} returnSessionKey                 (optional) if the unencrypted session key should be added to returned object
+ * @param  {Boolean} wildcard                         (optional) use a key ID of 0 instead of the public key IDs
+ * @param  {Date} date                                (optional) override the creation date of the message signature
+ * @param  {Array} fromUserIds                        (optional) array of user IDs to sign with, one per key in `privateKeys`, e.g. [{ name:'Steve Sender', email:'steve@openpgp.org' }]
+ * @param  {Array} toUserIds                          (optional) array of user IDs to encrypt for, one per key in `publicKeys`, e.g. [{ name:'Robert Receiver', email:'robert@openpgp.org' }]
+ * @returns {Promise<Object>}                         Object containing encrypted (and optionally signed) message in the form:
  *
  *     {
  *       data: String|ReadableStream<String>|NodeStream, (if `armor` was true, the default)
@@ -347,16 +350,16 @@ export function encrypt({ message, publicKeys, privateKeys, passwords, sessionKe
 /**
  * Decrypts a message with the user's private key, a session key or a password. Either a private key,
  *   a session key or a password must be specified.
- * @param  {Message} message                  the message object with the encrypted data
- * @param  {Key|Array<Key>} privateKeys       (optional) private keys with decrypted secret key data or session key
- * @param  {String|Array<String>} passwords   (optional) passwords to decrypt the message
- * @param  {Object|Array<Object>} sessionKeys (optional) session keys in the form: { data:Uint8Array, algorithm:String }
- * @param  {Key|Array<Key>} publicKeys        (optional) array of public keys or single key, to verify signatures
- * @param  {'utf8'|'binary'} format           (optional) whether to return data as a string(Stream) or Uint8Array(Stream). If 'utf8' (the default), also normalize newlines.
- * @param  {'web'|'node'|false} streaming     (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
- * @param  {Signature} signature              (optional) detached signature for verification
- * @param  {Date} date                        (optional) use the given date for verification instead of the current time
- * @returns {Promise<Object>}                 Object containing decrypted and verified message in the form:
+ * @param  {Message} message                          the message object with the encrypted data
+ * @param  {Key|Array<Key>} privateKeys               (optional) private keys with decrypted secret key data or session key
+ * @param  {String|Array<String>} passwords           (optional) passwords to decrypt the message
+ * @param  {Object|Array<Object>} sessionKeys         (optional) session keys in the form: { data:Uint8Array, algorithm:String }
+ * @param  {Key|Array<Key>} publicKeys                (optional) array of public keys or single key, to verify signatures
+ * @param  {'utf8'|'binary'} format                   (optional) whether to return data as a string(Stream) or Uint8Array(Stream). If 'utf8' (the default), also normalize newlines.
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
+ * @param  {Signature} signature                      (optional) detached signature for verification
+ * @param  {Date} date                                (optional) use the given date for verification instead of the current time
+ * @returns {Promise<Object>}                         Object containing decrypted and verified message in the form:
  *
  *     {
  *       data: String|ReadableStream<String>|NodeStream, (if format was 'utf8', the default)
@@ -406,14 +409,14 @@ export function decrypt({ message, privateKeys, passwords, sessionKeys, publicKe
 
 /**
  * Signs a cleartext message.
- * @param  {CleartextMessage|Message} message (cleartext) message to be signed
- * @param  {Key|Array<Key>} privateKeys       array of keys or single key with decrypted secret key data to sign cleartext
- * @param  {Boolean} armor                    (optional) if the return value should be ascii armored or the message object
- * @param  {'web'|'node'|false} streaming     (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
- * @param  {Boolean} detached                 (optional) if the return value should contain a detached signature
- * @param  {Date} date                        (optional) override the creation date of the signature
- * @param  {Array} fromUserIds                (optional) array of user IDs to sign with, one per key in `privateKeys`, e.g. [{ name:'Steve Sender', email:'steve@openpgp.org' }]
- * @returns {Promise<Object>}                 Object containing signed message in the form:
+ * @param  {CleartextMessage|Message} message         (cleartext) message to be signed
+ * @param  {Key|Array<Key>} privateKeys               array of keys or single key with decrypted secret key data to sign cleartext
+ * @param  {Boolean} armor                            (optional) if the return value should be ascii armored or the message object
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
+ * @param  {Boolean} detached                         (optional) if the return value should contain a detached signature
+ * @param  {Date} date                                (optional) override the creation date of the signature
+ * @param  {Array} fromUserIds                        (optional) array of user IDs to sign with, one per key in `privateKeys`, e.g. [{ name:'Steve Sender', email:'steve@openpgp.org' }]
+ * @returns {Promise<Object>}                         Object containing signed message in the form:
  *
  *     {
  *       data: String|ReadableStream<String>|NodeStream, (if `armor` was true, the default)
@@ -465,12 +468,12 @@ export function sign({ message, privateKeys, armor = true, streaming = message &
 
 /**
  * Verifies signatures of cleartext signed message
- * @param  {Key|Array<Key>} publicKeys         array of publicKeys or single key, to verify signatures
- * @param  {CleartextMessage|Message} message  (cleartext) message object with signatures
- * @param  {'web'|'node'|false} streaming      (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
- * @param  {Signature} signature               (optional) detached signature for verification
- * @param  {Date} date                         (optional) use the given date for verification instead of the current time
- * @returns {Promise<Object>}                  Object containing verified message in the form:
+ * @param  {Key|Array<Key>} publicKeys                array of publicKeys or single key, to verify signatures
+ * @param  {CleartextMessage|Message} message         (cleartext) message object with signatures
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return data as a stream. Defaults to the type of stream `message` was created from, if any.
+ * @param  {Signature} signature                      (optional) detached signature for verification
+ * @param  {Date} date                                (optional) use the given date for verification instead of the current time
+ * @returns {Promise<Object>}                         Object containing verified message in the form:
  *
  *     {
  *       data: String|ReadableStream<String>|NodeStream, (if `message` was a CleartextMessage)
@@ -614,34 +617,32 @@ function toArray(param) {
 
 /**
  * Convert data to or from Stream
- * @param  {Object} data                   the data to convert
- * @param  {'web'|'node'|false} streaming  (optional) whether to return a ReadableStream
- * @returns {Object}                       the data in the respective format
+ * @param  {Object} data                              the data to convert
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return a ReadableStream, and of what type
+ * @returns {Object}                                  the data in the respective format
  */
 async function convertStream(data, streaming) {
   if (!streaming && util.isStream(data)) {
     return stream.readToEnd(data);
   }
   if (streaming && !util.isStream(data)) {
-    data = new ReadableStream({
-      start(controller) {
-        controller.enqueue(data);
-        controller.close();
-      }
-    });
+    data = stream.toStream(data);
   }
   if (streaming === 'node') {
-    data = stream.webToNode(data);
+    return stream.webToNode(data);
+  }
+  if (streaming === 'web' && util.isStream(data) === 'ponyfill' && global.ReadableStream) {
+    return toNativeReadable(data);
   }
   return data;
 }
 
 /**
  * Convert object properties from Stream
- * @param  {Object} obj                    the data to convert
- * @param  {'web'|'node'|false} streaming  (optional) whether to return ReadableStreams
- * @param  {Array<String>} keys            (optional) which keys to return as streams, if possible
- * @returns {Object}                       the data in the respective format
+ * @param  {Object} obj                               the data to convert
+ * @param  {'web'|'ponyfill'|'node'|false} streaming  (optional) whether to return ReadableStreams, and of what type
+ * @param  {Array<String>} keys                       (optional) which keys to return as streams, if possible
+ * @returns {Object}                                  the data in the respective format
  */
 async function convertStreams(obj, streaming, keys = []) {
   if (Object.prototype.isPrototypeOf(obj) && !Uint8Array.prototype.isPrototypeOf(obj)) {

@@ -265,7 +265,7 @@ Where the value can be any of:
 #### Streaming encrypt *Uint8Array* data with a password
 
 ```js
-const readableStream = new ReadableStream({
+const readableStream = new openpgp.stream.ReadableStream({
     start(controller) {
         controller.enqueue(new Uint8Array([0x01, 0x02, 0x03]));
         controller.close();
@@ -316,7 +316,7 @@ its [Reader class](https://openpgpjs.org/web-stream-tools/Reader.html).
     const privKeyObj = (await openpgp.key.readArmored(privkey)).keys[0];
     await privKeyObj.decrypt(passphrase);
 
-    const readableStream = new ReadableStream({
+    const readableStream = new openpgp.stream.ReadableStream({
         start(controller) {
             controller.enqueue('Hello, world!');
             controller.close();
@@ -507,7 +507,7 @@ openpgp.verify(options).then(function(verified) {
 #### Streaming sign and verify *Uint8Array* data
 
 ```js
-var readableStream = new ReadableStream({
+var readableStream = new openpgp.stream.ReadableStream({
     start(controller) {
         controller.enqueue(new Uint8Array([0x01, 0x02, 0x03]));
         controller.close();

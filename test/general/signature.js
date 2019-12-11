@@ -782,7 +782,7 @@ yYDnCgA=
 -----END PGP MESSAGE-----`.split('');
 
       const plaintext = 'space: \nspace and tab: \t\nno trailing space\n  \ntab:\t\ntab and space:\t ';
-      const sMsg = await openpgp.message.readArmored(new ReadableStream({
+      const sMsg = await openpgp.message.readArmored(new openpgp.stream.ReadableStream({
         async pull(controller) {
           await new Promise(setTimeout);
           controller.enqueue(msg_armor.shift());
@@ -844,7 +844,7 @@ hkJiXopCSWKSlQInL1devkJJUWJmTmZeugJYlpdLAagQJM0JpsCqIQZwKgAA
 -----END PGP MESSAGE-----`.split('');
 
       const plaintext = 'space: \nspace and tab: \t\nno trailing space\n  \ntab:\t\ntab and space:\t ';
-      const sMsg = await openpgp.message.readArmored(new ReadableStream({
+      const sMsg = await openpgp.message.readArmored(new openpgp.stream.ReadableStream({
         async pull(controller) {
           await new Promise(setTimeout);
           controller.enqueue(msg_armor.shift());

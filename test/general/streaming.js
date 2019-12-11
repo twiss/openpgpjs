@@ -165,7 +165,7 @@ let privKey, pubKey, plaintext, data, i, canceled, expectedType, dataArrived;
 function tests() {
   it('Encrypt small message', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new ReadableStream({
+    const data = new openpgp.stream.ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -536,7 +536,7 @@ function tests() {
     try {
       let plaintext = [];
       let i = 0;
-      const data = new ReadableStream({
+      const data = new openpgp.stream.ReadableStream({
         async pull(controller) {
           await new Promise(resolve => setTimeout(resolve, 10));
           if (i++ < 10) {
@@ -726,7 +726,7 @@ function tests() {
 
   it('Detached sign small message', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new ReadableStream({
+    const data = new openpgp.stream.ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -753,7 +753,7 @@ function tests() {
 
   it('Detached sign small message (not streaming)', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new ReadableStream({
+    const data = new openpgp.stream.ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -780,7 +780,7 @@ function tests() {
 
   it('Detached sign small message using brainpool curve keys', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new ReadableStream({
+    const data = new openpgp.stream.ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -810,7 +810,7 @@ function tests() {
 
   it('Detached sign small message using x25519 curve keys', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new ReadableStream({
+    const data = new openpgp.stream.ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -909,7 +909,7 @@ describe('Streaming', function() {
     plaintext = [];
     i = 0;
     canceled = false;
-    data = new ReadableStream({
+    data = new openpgp.stream.ReadableStream({
       async pull(controller) {
         await new Promise(setTimeout);
         if (test === currentTest && i++ < 100) {
