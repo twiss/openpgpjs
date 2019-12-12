@@ -622,16 +622,18 @@ function toArray(param) {
  * @returns {Object}                                  the data in the respective format
  */
 async function convertStream(data, streaming) {
-  if (!streaming && util.isStream(data)) {
+  let streamType = util.isStream(data);
+  if (!streaming && streamType) {
     return stream.readToEnd(data);
   }
-  if (streaming && !util.isStream(data)) {
+  if (streaming && !streamType) {
     data = stream.toStream(data);
+    streamType = util.isStream(data);
   }
   if (streaming === 'node') {
     return stream.webToNode(data);
   }
-  if (streaming === 'web' && util.isStream(data) === 'ponyfill' && global.ReadableStream) {
+  if (streaming === 'web' && streamType === 'ponyfill' && toNativeReadable) {
     return toNativeReadable(data);
   }
   return data;

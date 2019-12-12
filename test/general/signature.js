@@ -538,7 +538,7 @@ vwjE8mqJXetNMfj8r2SCyvkEnlVRYR+/mnge+ib56FdJ8uKtqSxyvgA=
     const sMsg = await openpgp.message.readArmored(signedArmor);
     const pub_key = (await openpgp.key.readArmored(pub_key_arm2)).keys[0];
     return sMsg.verify([pub_key]).then(async verified => {
-      openpgp.stream.pipe(sMsg.getLiteralData(), new WritableStream());
+      openpgp.stream.pipe(sMsg.getLiteralData(), new openpgp.stream.WritableStream());
       expect(verified).to.exist;
       expect(verified).to.have.length(1);
       expect(await verified[0].verified).to.be.true;
@@ -644,7 +644,7 @@ vwjE8mqJXetNMfj8r2SCyvkEnlVRYR+/mnge+ib56FdJ8uKtqSxyvgA=
       const sMsg = await openpgp.message.readArmored(signature_with_critical_notation);
       const pub_key = (await openpgp.key.readArmored(pub_key_arm2)).keys[0];
       const verified = await sMsg.verify([pub_key]);
-      openpgp.stream.pipe(sMsg.getLiteralData(), new WritableStream());
+      openpgp.stream.pipe(sMsg.getLiteralData(), new openpgp.stream.WritableStream());
       expect(await verified[0].verified).to.be.true;
     } finally {
       openpgp.config.known_notations.pop();
@@ -1134,7 +1134,7 @@ hkJiXopCSWKSlQInL1devkJJUWJmTmZeugJYlpdLAagQJM0JpsCqIQZwKgAA
     const msg = openpgp.message.fromText(content);
     await msg.appendSignature(detachedSig);
     return msg.verify(publicKeys).then(async result => {
-      openpgp.stream.pipe(msg.getLiteralData(), new WritableStream());
+      openpgp.stream.pipe(msg.getLiteralData(), new openpgp.stream.WritableStream());
       expect(await result[0].verified).to.be.true;
     });
   });

@@ -9,6 +9,8 @@ const { expect } = chai;
 
 const { stream, util } = openpgp;
 
+const ReadableStream = global.ReadableStream || openpgp.stream.ReadableStream;
+
 const pub_key =
   ['-----BEGIN PGP PUBLIC KEY BLOCK-----',
   'Version: GnuPG v2.0.19 (GNU/Linux)',
@@ -165,7 +167,7 @@ let privKey, pubKey, plaintext, data, i, canceled, expectedType, dataArrived;
 function tests() {
   it('Encrypt small message', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new openpgp.stream.ReadableStream({
+    const data = new ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -536,7 +538,7 @@ function tests() {
     try {
       let plaintext = [];
       let i = 0;
-      const data = new openpgp.stream.ReadableStream({
+      const data = new ReadableStream({
         async pull(controller) {
           await new Promise(resolve => setTimeout(resolve, 10));
           if (i++ < 10) {
@@ -592,6 +594,7 @@ function tests() {
     });
     await new Promise(resolve => setTimeout(resolve));
     await stream.cancel(transformed);
+    await new Promise(resolve => setTimeout(resolve));
     expect(canceled).to.be.true;
   });
 
@@ -726,7 +729,7 @@ function tests() {
 
   it('Detached sign small message', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new openpgp.stream.ReadableStream({
+    const data = new ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -753,7 +756,7 @@ function tests() {
 
   it('Detached sign small message (not streaming)', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new openpgp.stream.ReadableStream({
+    const data = new ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -780,7 +783,7 @@ function tests() {
 
   it('Detached sign small message using brainpool curve keys', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new openpgp.stream.ReadableStream({
+    const data = new ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -810,7 +813,7 @@ function tests() {
 
   it('Detached sign small message using x25519 curve keys', async function() {
     dataArrived(); // Do not wait until data arrived.
-    const data = new openpgp.stream.ReadableStream({
+    const data = new ReadableStream({
       async start(controller) {
         controller.enqueue(util.str_to_Uint8Array('hello '));
         controller.enqueue(util.str_to_Uint8Array('world'));
@@ -909,7 +912,7 @@ describe('Streaming', function() {
     plaintext = [];
     i = 0;
     canceled = false;
-    data = new openpgp.stream.ReadableStream({
+    data = new ReadableStream({
       async pull(controller) {
         await new Promise(setTimeout);
         if (test === currentTest && i++ < 100) {
@@ -930,7 +933,7 @@ describe('Streaming', function() {
   tryTests('WhatWG Streams', tests, {
     if: true,
     beforeEach: function() {
-      expectedType = 'web';
+      expectedType = global.ReadableStream ? 'web' : 'ponyfill';
     }
   });
 
