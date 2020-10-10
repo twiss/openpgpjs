@@ -16,6 +16,16 @@
   "main": "dist/node/openpgp.min.js",
   "module": "dist/node/openpgp.min.mjs",
   "browser": {
+    "crypto": false,
+    "zlib": false,
+    "buffer": false,
+    "stream": false,
+    "util": false,
+    "fs": false,
+    "os": false,
+    "asn1.js": false,
+    "node-fetch": false,
+    "node-localstorage": false,
     "./dist/node/openpgp.min.js": "./dist/openpgp.min.js",
     "./dist/node/openpgp.min.mjs": "./dist/openpgp.min.mjs"
   },
@@ -71,7 +81,7 @@
     "sinon": "^4.3.0",
     "text-encoding-utf-8": "^1.0.2",
     "tweetnacl": "github:openpgpjs/tweetnacl-js#1ef755f2b252a3e328ac739848d00e0dad76be2d",
-    "web-stream-tools": "github:openpgpjs/web-stream-tools#5e6cb1a976d50c421091907615cf7cce77ac4f2a",
+    "web-stream-tools": "github:openpgpjs/web-stream-tools#9248198548721f37bcdce99e7221e4d30fc5c89b",
     "whatwg-fetch": "^2.0.3"
   },
   "dependencies": {
