@@ -574,7 +574,7 @@ export default {
    * @returns {Object}   The crypto module or 'undefined'
    */
   getNodeCrypto: function() {
-    if (!config.useNative) {
+    if (!util.detectNode() || !config.useNative) {
       return;
     }
 
@@ -582,7 +582,7 @@ export default {
   },
 
   getNodeZlib: function() {
-    if (!config.useNative) {
+    if (!util.detectNode() || !config.useNative) {
       return;
     }
 
