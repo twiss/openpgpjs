@@ -282,23 +282,27 @@ class SecretKeyPacket extends PublicKeyPacket {
       throw new Error('The key must be decrypted before removing passphrase protection.');
     }
 
+    if (config.aeadProtect) {
+      this.s2kUsage = 253;
+    } else {
+      this.s2kUsage = 254;
+    }
+
     this.s2k = new S2K(config);
     this.s2k.salt = await crypto.random.getRandomBytes(8);
     const cleartext = crypto.serializeParams(this.algorithm, this.privateParams);
     this.symmetric = enums.symmetric.aes256;
-    const key = await produceEncryptionKey(this.s2k, passphrase, this.symmetric);
+    const key = await this.produceEncryptionKey(passphrase);
 
     const { blockSize } = crypto.getCipher(this.symmetric);
     this.iv = await crypto.random.getRandomBytes(blockSize);
 
-    if (config.aeadProtect) {
-      this.s2kUsage = 253;
+    if (this.s2kUsage === 253) {
       this.aead = enums.aead.eax;
       const mode = crypto.getAEADMode(this.aead);
       const modeInstance = await mode(this.symmetric, key);
       this.keyMaterial = await modeInstance.encrypt(cleartext, this.iv.subarray(0, mode.ivLength), new Uint8Array());
     } else {
-      this.s2kUsage = 254;
       this.keyMaterial = await crypto.mode.cfb.encrypt(this.symmetric, key, util.concatUint8Array([
         cleartext,
         await crypto.hash.sha1(cleartext, config)
@@ -326,7 +330,7 @@ class SecretKeyPacket extends PublicKeyPacket {
 
     let key;
     if (this.s2kUsage === 254 || this.s2kUsage === 253) {
-      key = await produceEncryptionKey(this.s2k, passphrase, this.symmetric);
+      key = await this.produceEncryptionKey(passphrase);
     } else if (this.s2kUsage === 255) {
       throw new Error('Encrypted private key is authenticated using an insecure two-byte hash');
     } else {
@@ -416,11 +420,15 @@ class SecretKeyPacket extends PublicKeyPacket {
     this.privateParams = null;
     this.isEncrypted = true;
   }
-}
 
-async function produceEncryptionKey(s2k, passphrase, algorithm) {
-  const { keySize } = crypto.getCipher(algorithm);
-  return s2k.produceKey(passphrase, keySize);
+  async produceEncryptionKey(passphrase) {
+    const associatedData = this.s2kUsage === 253 ?
+      new Uint8Array([0xC0 | SecretKeyPacket.tag, this.version, this.symmetric, this.aead]) :
+      new Uint8Array();
+
+    const { keySize } = crypto.getCipher(this.symmetric);
+    return this.s2k.produceKey(associatedData, passphrase, keySize);
+  }
 }
 
 export default SecretKeyPacket;

@@ -121,14 +121,13 @@ export class Message {
 
     const symEncryptedPacket = symEncryptedPacketlist[0];
     let exception = null;
-    const decryptedPromise = Promise.all(sessionKeyObjs.map(async ({ algorithm: algorithmName, data }) => {
-      if (!util.isUint8Array(data) || !util.isString(algorithmName)) {
+    const decryptedPromise = Promise.all(sessionKeyObjs.map(async sessionKey => {
+      if (!util.isUint8Array(sessionKey.data) || !util.isString(sessionKey.algorithmName)) {
         throw new Error('Invalid session key for decryption.');
       }
 
       try {
-        const algo = enums.write(enums.symmetric, algorithmName);
-        await symEncryptedPacket.decrypt(algo, data, config);
+        await symEncryptedPacket.decrypt(sessionKey, config);
       } catch (e) {
         util.printDebugError(e);
         exception = e;
@@ -238,8 +237,8 @@ export class Message {
       // Return only unique session keys
       if (keyPackets.length > 1) {
         const seen = new Set();
-        keyPackets = keyPackets.filter(item => {
-          const k = item.sessionKeyAlgorithm + util.uint8ArrayToString(item.sessionKey);
+        keyPackets = keyPackets.filter(packet => {
+          const k = util.uint8ArrayToString(packet.sessionKey) + packet.sessionKeyAlgorithm + (packet.sessionKeyAEADAlgorithm || 0);
           if (seen.has(k)) {
             return false;
           }
@@ -250,7 +249,8 @@ export class Message {
 
       return keyPackets.map(packet => ({
         data: packet.sessionKey,
-        algorithm: enums.read(enums.symmetric, packet.sessionKeyAlgorithm)
+        symmetricAlgorithm: packet.sessionKeyAlgorithm,
+        aeadAlgorithm: packet.sessionKeyAEADAlgorithm
       }));
     }
     throw exception || new Error('Session key decryption failed.');
@@ -342,14 +342,12 @@ export class Message {
     let symEncryptedPacket;
     if (aeadAlgorithmName) {
       symEncryptedPacket = new AEADEncryptedDataPacket();
-      symEncryptedPacket.aeadAlgorithm = enums.write(enums.aead, aeadAlgorithmName);
     } else {
       symEncryptedPacket = new SymEncryptedIntegrityProtectedDataPacket();
     }
     symEncryptedPacket.packets = this.packets;
 
-    const algorithm = enums.write(enums.symmetric, algorithmName);
-    await symEncryptedPacket.encrypt(algorithm, sessionKeyData, config);
+    await symEncryptedPacket.encrypt(sessionKey, config);
 
     msg.packets.push(symEncryptedPacket);
     symEncryptedPacket.packets = new PacketList(); // remove packets after encryption
@@ -380,10 +378,25 @@ export class Message {
       const results = await Promise.all(encryptionKeys.map(async function(primaryKey, i) {
         const encryptionKey = await primaryKey.getEncryptionKey(encryptionKeyIDs[i], date, userIDs, config);
         const pkESKeyPacket = new PublicKeyEncryptedSessionKeyPacket();
-        pkESKeyPacket.publicKeyID = wildcard ? KeyID.wildcard() : encryptionKey.getKeyID();
+        if (aeadAlgorithm) {
+          pkESKeyPacket.version = 5;
+          if (wildcard) {
+            pkESKeyPacket.publicKeyVersion = 0;
+            pkESKeyPacket.publicKeyFingerprint = new Uint8Array();
+          } else {
+            pkESKeyPacket.publicKeyVersion = encryptionKey.keyPacket.version;
+            pkESKeyPacket.publicKeyFingerprint = encryptionKey.getFingerprintBytes();
+          }
+        } else {
+          pkESKeyPacket.version = 3;
+          pkESKeyPacket.publicKeyID = wildcard ? KeyID.wildcard() : encryptionKey.getKeyID();
+        }
         pkESKeyPacket.publicKeyAlgorithm = encryptionKey.keyPacket.algorithm;
         pkESKeyPacket.sessionKey = sessionKey;
         pkESKeyPacket.sessionKeyAlgorithm = algorithm;
+        if (aeadAlgorithm) {
+          pkESKeyPacket.sessionKeyAEADAlgorithm = aeadAlgorithm;
+        }
         await pkESKeyPacket.encrypt(encryptionKey.keyPacket);
         delete pkESKeyPacket.sessionKey; // delete plaintext session key after encryption
         return pkESKeyPacket;
@@ -403,11 +416,18 @@ export class Message {
       const sum = (accumulator, currentValue) => accumulator + currentValue;
 
       const encryptPassword = async function(sessionKey, algorithm, aeadAlgorithm, password) {
-        const symEncryptedSessionKeyPacket = new SymEncryptedSessionKeyPacket(config);
+        const symEncryptedSessionKeyPacket = new SymEncryptedSessionKeyPacket();
+        if (aeadAlgorithm) {
+          symEncryptedSessionKeyPacket.version = 5;
+        } else {
+          symEncryptedSessionKeyPacket.version = 4;
+        }
+        symEncryptedSessionKeyPacket.symmetricAlgorithm = algorithm;
         symEncryptedSessionKeyPacket.sessionKey = sessionKey;
         symEncryptedSessionKeyPacket.sessionKeyAlgorithm = algorithm;
         if (aeadAlgorithm) {
           symEncryptedSessionKeyPacket.aeadAlgorithm = aeadAlgorithm;
+          symEncryptedSessionKeyPacket.sessionKeyAEADAlgorithm = aeadAlgorithm;
         }
         await symEncryptedSessionKeyPacket.encrypt(password, config);
 

@@ -73,22 +73,26 @@ class SymmetricallyEncryptedDataPacket {
   /**
    * Decrypt the symmetrically-encrypted packet data
    * See {@link https://tools.ietf.org/html/rfc4880#section-9.2|RFC 4880 9.2} for algorithms.
-   * @param {module:enums.symmetric} sessionKeyAlgorithm - Symmetric key algorithm to use
-   * @param {Uint8Array} key - The key of cipher blocksize length to be used
+   * @param {Object} sessionKey - The session key object to be used
    * @param {Object} [config] - Full configuration, defaults to openpgp.config
 
    * @throws {Error} if decryption was not successful
    * @async
    */
-  async decrypt(sessionKeyAlgorithm, key, config = defaultConfig) {
+  async decrypt(sessionKey, config = defaultConfig) {
     // If MDC errors are not being ignored, all missing MDC packets in symmetrically encrypted data should throw an error
     if (!config.allowUnauthenticatedMessages) {
       throw new Error('Message is not authenticated.');
     }
 
-    const { blockSize } = crypto.getCipher(sessionKeyAlgorithm);
+    if (sessionKey.aeadAlgorithm) {
+      throw new Error('V5 session cannot be used with non-AEAD encrypted data packet');
+    }
+    const { blockSize } = crypto.getCipher(sessionKey.symmetricAlgorithm);
     const encrypted = await stream.readToEnd(stream.clone(this.encrypted));
-    const decrypted = await crypto.mode.cfb.decrypt(sessionKeyAlgorithm, key,
+    const decrypted = await crypto.mode.cfb.decrypt(
+      sessionKey.symmetricAlgorithm,
+      sessionKey.data,
       encrypted.subarray(blockSize + 2),
       encrypted.subarray(2, blockSize + 2)
     );
@@ -99,19 +103,18 @@ class SymmetricallyEncryptedDataPacket {
   /**
    * Encrypt the symmetrically-encrypted packet data
    * See {@link https://tools.ietf.org/html/rfc4880#section-9.2|RFC 4880 9.2} for algorithms.
-   * @param {module:enums.symmetric} sessionKeyAlgorithm - Symmetric key algorithm to use
-   * @param {Uint8Array} key - The key of cipher blocksize length to be used
+   * @param {Object} sessionKey - The session key object to be used
    * @param {Object} [config] - Full configuration, defaults to openpgp.config
    * @throws {Error} if encryption was not successful
    * @async
    */
-  async encrypt(sessionKeyAlgorithm, key, config = defaultConfig) {
+  async encrypt(sessionKey, config = defaultConfig) {
     const data = this.packets.write();
-    const { blockSize } = crypto.getCipher(sessionKeyAlgorithm);
+    const { blockSize } = crypto.getCipher(sessionKey.symmetricAlgorithm);
 
-    const prefix = await crypto.getPrefixRandom(sessionKeyAlgorithm);
-    const FRE = await crypto.mode.cfb.encrypt(sessionKeyAlgorithm, key, prefix, new Uint8Array(blockSize), config);
-    const ciphertext = await crypto.mode.cfb.encrypt(sessionKeyAlgorithm, key, data, FRE.subarray(2), config);
+    const prefix = await crypto.getPrefixRandom(sessionKey.symmetricAlgorithm);
+    const FRE = await crypto.mode.cfb.encrypt(sessionKey.symmetricAlgorithm, sessionKey.data, prefix, new Uint8Array(blockSize), config);
+    const ciphertext = await crypto.mode.cfb.encrypt(sessionKey.symmetricAlgorithm, sessionKey.data, data, FRE.subarray(2), config);
     this.encrypted = util.concat([FRE, ciphertext]);
   }
 }

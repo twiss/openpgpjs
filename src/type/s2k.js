@@ -149,7 +149,7 @@ class S2K {
    * hashAlgorithm hash length
    * @async
    */
-  async produceKey(passphrase, numBytes) {
+  async produceKey(associatedData, passphrase, numBytes) {
     passphrase = util.encodeUTF8(passphrase);
 
     const arr = [];
@@ -160,13 +160,13 @@ class S2K {
       let toHash;
       switch (this.type) {
         case 'simple':
-          toHash = util.concatUint8Array([new Uint8Array(prefixlen), passphrase]);
+          toHash = util.concatUint8Array([new Uint8Array(prefixlen), associatedData, passphrase]);
           break;
         case 'salted':
-          toHash = util.concatUint8Array([new Uint8Array(prefixlen), this.salt, passphrase]);
+          toHash = util.concatUint8Array([new Uint8Array(prefixlen), this.salt, associatedData, passphrase]);
           break;
         case 'iterated': {
-          const data = util.concatUint8Array([this.salt, passphrase]);
+          const data = util.concatUint8Array([this.salt, associatedData, passphrase]);
           let datalen = data.length;
           const count = Math.max(this.getCount(), datalen);
           toHash = new Uint8Array(prefixlen + count);

@@ -20,8 +20,7 @@ import crypto from '../crypto';
 import enums from '../enums';
 import util from '../util';
 import { UnsupportedError } from './packet';
-
-const VERSION = 3;
+import AEADEncryptedDataPacket from './aead_encrypted_data';
 
 /**
  * Public-Key Encrypted Session Key Packets (Tag 1)
@@ -45,10 +44,13 @@ class PublicKeyEncryptedSessionKeyPacket {
   }
 
   constructor() {
-    this.version = 3;
+    this.version = null;
 
     this.publicKeyID = new KeyID();
     this.publicKeyAlgorithm = null;
+
+    this.publicKeyVersion = null;
+    this.publicKeyFingerprint = null;
 
     this.sessionKey = null;
     /**
@@ -56,6 +58,11 @@ class PublicKeyEncryptedSessionKeyPacket {
      * @type {enums.symmetric}
      */
     this.sessionKeyAlgorithm = null;
+    /**
+     * AEAD algorithm to encrypt the message with
+     * @type {enums.aead}
+     */
+    this.sessionKeyAEADAlgorithm = null;
 
     /** @type {Object} */
     this.encrypted = {};
@@ -68,7 +75,7 @@ class PublicKeyEncryptedSessionKeyPacket {
    */
   read(bytes) {
     this.version = bytes[0];
-    if (this.version !== VERSION) {
+    if (this.version !== 3 && this.version !== 5) {
       throw new UnsupportedError(`Version ${this.version} of the PKESK packet is unsupported.`);
     }
     this.publicKeyID.read(bytes.subarray(1, bytes.length));
@@ -82,13 +89,21 @@ class PublicKeyEncryptedSessionKeyPacket {
    * @returns {Uint8Array} The Uint8Array representation.
    */
   write() {
-    const arr = [
-      new Uint8Array([this.version]),
-      this.publicKeyID.write(),
+    const arr = [new Uint8Array([this.version])];
+    if (this.version === 5) {
+      arr.push(
+        new Uint8Array([this.publicKeyVersion]),
+        this.publicKeyFingerprint
+      );
+    } else if (this.version === 3) {
+      arr.push(this.publicKeyID.write());
+    } else {
+      throw new Error('Unsupported version');
+    }
+    arr.push(
       new Uint8Array([this.publicKeyAlgorithm]),
       crypto.serializeParams(this.publicKeyAlgorithm, this.encrypted)
-    ];
-
+    );
     return util.concatUint8Array(arr);
   }
 
@@ -99,11 +114,24 @@ class PublicKeyEncryptedSessionKeyPacket {
    * @async
    */
   async encrypt(key) {
-    const data = util.concatUint8Array([
-      new Uint8Array([enums.write(enums.symmetric, this.sessionKeyAlgorithm)]),
-      this.sessionKey,
-      util.writeChecksum(this.sessionKey)
-    ]);
+    const arr = [];
+    if (this.version === 5) {
+      arr.push(new Uint8Array([
+        0xC0 | AEADEncryptedDataPacket.tag,
+        AEADEncryptedDataPacket.version,
+        this.sessionKeyAlgorithm,
+        this.aeadAlgorithm
+      ]));
+    } else {
+      arr.push(new Uint8Array([this.sessionKeyAlgorithm]));
+    }
+    arr.push(this.sessionKey);
+    if (this.version === 5) {
+      arr.push(util.writeChecksum(util.concatUint8Array(arr)));
+    } else {
+      arr.push(util.writeChecksum(this.sessionKey));
+    }
+    const data = util.concatUint8Array(arr);
     const algo = enums.write(enums.publicKey, this.publicKeyAlgorithm);
     this.encrypted = await crypto.publicKeyEncrypt(
       algo, key.publicParams, data, key.getFingerprintBytes());
@@ -124,11 +152,21 @@ class PublicKeyEncryptedSessionKeyPacket {
     const decoded = await crypto.publicKeyDecrypt(this.publicKeyAlgorithm, key.publicParams, key.privateParams, this.encrypted, key.getFingerprintBytes());
     const checksum = decoded.subarray(decoded.length - 2);
     const sessionKey = decoded.subarray(1, decoded.length - 2);
-    if (!util.equalsUint8Array(checksum, util.writeChecksum(sessionKey))) {
+    if (!util.equalsUint8Array(checksum, util.writeChecksum(
+      this.version === 5 ? decoded.subarray(0, decoded.length - 2) : sessionKey
+    ))) {
       throw new Error('Decryption error');
     } else {
       this.sessionKey = sessionKey;
-      this.sessionKeyAlgorithm = enums.write(enums.symmetric, decoded[0]);
+      let i = 0;
+      if (this.version === 5) {
+        if (decoded[i++] !== (0xC0 | AEADEncryptedDataPacket.tag)) throw new Error('Unsupported AEAD packet');
+        if (decoded[i++] !== AEADEncryptedDataPacket.version) throw new Error('Unsupported AEAD version');
+      }
+      this.sessionKeyAlgorithm = enums.write(enums.symmetric, decoded[i++]);
+      if (this.version === 5) {
+        this.sessionKeyAEADAlgorithm = enums.write(enums.aead, decoded[i++]);
+      }
     }
   }
 }
