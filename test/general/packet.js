@@ -548,11 +548,11 @@ module.exports = () => describe('Packet', function() {
       32 1a ae 65 d0 88 de 31  4e 1e 1e 54 21 ae f1 33
       00 2d 83 5f
 
-      d4 48 01 0e b7 32 37 9f  73 c4 92 8d e2 5f ac fe
-      65 17 ec 10 5d c1 1a 81  dc 0c b8 a2 f6 f3 d9 00
-      16 38 4a 56 fc 82 1a e1  1a e8 db cb 49 86 26 55
-      de a8 8d 06 a8 14 86 80  1b 0f f3 87 bd 2e ab 01
-      3d e1 25 95 86 90 6e ab  24 76
+      d4 4a 01 07 01 0e b7 32  37 9f 73 c4 92 8d e2 5f
+      ac fe 65 17 ec 10 5d c1  1a 81 dc 0c b8 a2 f6 f3
+      d9 00 16 38 4a 56 fc 82  1a e1 1a e8 db cb 49 86
+      26 55 de a8 8d 06 a8 14  86 80 1b 0f f3 87 bd 2e
+      ab 01 3d e1 25 95 86 90  6e ab 24 76
     `.replace(/\s+/g, ''));
 
     try {
@@ -637,11 +637,11 @@ module.exports = () => describe('Packet', function() {
       d7 a1 42 90 5d 3d 24 2a  fc 07 94 86 3e d4 1e 6f
       2d 28 f1
 
-      d4 47 01 0e 5e d2 bc 1e  47 0a be 8f 1d 64 4c 7a
-      6c 8a 56 7b 0f 77 01 19  66 11 a1 54 ba 9c 25 74
-      cd 05 62 84 a8 ef 68 03  5c 62 3d 93 cc 70 8a 43
-      21 1b b6 ea f2 b2 7f 7c  18 d5 71 bc d8 3b 20 ad
-      d3 a0 8b 73 af 15 b9 a0  98
+      d4 49 01 07 02 0e 5e d2  bc 1e 47 0a be 8f 1d 64
+      4c 7a 6c 8a 56 7b 0f 77  01 19 66 11 a1 54 ba 9c
+      25 74 cd 05 62 84 a8 ef  68 03 5c 62 3d 93 cc 70
+      8a 43 21 1b b6 ea f2 b2  7f 7c 18 d5 71 bc d8 3b
+      20 ad d3 a0 8b 73 af 15  b9 a0 98
     `.replace(/\s+/g, ''));
 
     try {

@@ -56,7 +56,12 @@ class AEADEncryptedDataPacket {
 
   constructor() {
     this.version = VERSION;
+    /** @type {enums.symmetric} */
+    this.cipherAlgorithm = null;
+    /** @type {enums.aead} */
+    this.aeadAlgorithm = enums.aead.eax;
     this.chunkSizeByte = null;
+    this.iv = null;
     this.encrypted = null;
     this.packets = null;
   }
@@ -72,8 +77,12 @@ class AEADEncryptedDataPacket {
       if (version !== VERSION) { // The only currently defined value is 1.
         throw new UnsupportedError(`Version ${version} of the AEAD-encrypted data packet is not supported.`);
       }
+      this.cipherAlgorithm = await reader.readByte();
+      this.aeadAlgorithm = await reader.readByte();
       this.chunkSizeByte = await reader.readByte();
 
+      const mode = crypto.getAEADMode(this.aeadAlgorithm);
+      this.iv = await reader.readBytes(mode.ivLength);
       this.encrypted = reader.remainder();
     });
   }
@@ -83,7 +92,7 @@ class AEADEncryptedDataPacket {
    * @returns {Uint8Array | ReadableStream<Uint8Array>} The encrypted payload.
    */
   write() {
-    return util.concat([new Uint8Array([this.version, this.chunkSizeByte]), this.iv, this.encrypted]);
+    return util.concat([new Uint8Array([this.version, this.cipherAlgorithm, this.aeadAlgorithm, this.chunkSizeByte]), this.iv, this.encrypted]);
   }
 
   /**
@@ -94,13 +103,8 @@ class AEADEncryptedDataPacket {
    * @async
    */
   async decrypt(sessionKey, config = defaultConfig) {
-    const encrypted = stream.clone(this.encrypted);
-    const reader = stream.getReader(encrypted);
-    const { ivLength } = crypto.getAEADMode(sessionKey.aeadAlgorithm);
-    const iv = await reader.readBytes(ivLength);
-    reader.releaseLock();
     this.packets = await PacketList.fromBinary(
-      await this.crypt('decrypt', sessionKey, iv, encrypted),
+      await this.crypt('decrypt', sessionKey, stream.clone(this.encrypted)),
       allowedPackets,
       config
     );
@@ -116,21 +120,22 @@ class AEADEncryptedDataPacket {
   async encrypt(sessionKey, config = defaultConfig) {
     const { ivLength } = crypto.getAEADMode(sessionKey.aeadAlgorithm);
     this.iv = await crypto.random.getRandomBytes(ivLength); // generate new random IV
+    this.cipherAlgorithm = sessionKey.symmetricAlgorithm;
+    this.aeadAlgorithm = sessionKey.aeadAlgorithm;
     this.chunkSizeByte = config.aeadChunkSizeByte;
     const data = this.packets.write();
-    this.encrypted = await this.crypt('encrypt', sessionKey, this.iv, data);
+    this.encrypted = await this.crypt('encrypt', sessionKey, data);
   }
 
   /**
    * En/decrypt the payload.
    * @param {encrypt|decrypt} fn - Whether to encrypt or decrypt
    * @param {Object} sessionKey - The session key object to be used
-   * @param {Uint8Array} iv - The IV to use
    * @param {Uint8Array | ReadableStream<Uint8Array>} data - The data to en/decrypt
    * @returns {Promise<Uint8Array | ReadableStream<Uint8Array>>}
    * @async
    */
-  async crypt(fn, sessionKey, iv, data) {
+  async crypt(fn, sessionKey, data) {
     const mode = crypto.getAEADMode(sessionKey.aeadAlgorithm);
     const modeInstance = await mode(sessionKey.symmetricAlgorithm, sessionKey.data);
     const tagLengthIfDecrypting = fn === 'decrypt' ? mode.tagLength : 0;
@@ -146,6 +151,7 @@ class AEADEncryptedDataPacket {
     let latestPromise = Promise.resolve();
     let cryptedBytes = 0;
     let queuedBytes = 0;
+    const iv = this.iv;
     return stream.transformPair(data, async (readable, writable) => {
       if (util.isStream(readable) !== 'array') {
         const buffer = new stream.TransformStream({}, {
