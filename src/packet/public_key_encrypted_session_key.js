@@ -43,7 +43,7 @@ class PublicKeyEncryptedSessionKeyPacket {
   }
 
   constructor() {
-    this.version = 3;
+    this.version = null;
 
     // For version 3:
     this.publicKeyID = new KeyID();
@@ -78,16 +78,23 @@ class PublicKeyEncryptedSessionKeyPacket {
       throw new UnsupportedError(`Version ${this.version} of the PKESK packet is unsupported.`);
     }
     if (this.version === 6) {
-      this.publicKeyVersion = bytes[offset++];
-      const fingerprintLength = this.publicKeyVersion ? (this.publicKeyVersion >= 5 ? 32 : 20) : 0;
-      this.publicKeyFingerprint = bytes.subarray(offset, offset + fingerprintLength);
-      offset += fingerprintLength;
-      if (this.publicKeyVersion === 0) {
-        this.publicKeyID = KeyID.wildcard();
-      } else if (this.publicKeyVersion >= 5) {
-        this.publicKeyID.read(this.publicKeyFingerprint);
+      const sizeFields = bytes[offset++];
+      if (sizeFields !== 0) {
+        this.publicKeyVersion = bytes[offset++];
+        const fingerprintLength = this.publicKeyVersion ? (this.publicKeyVersion >= 5 ? 32 : 20) : 0;
+        this.publicKeyFingerprint = bytes.subarray(offset, offset + fingerprintLength);
+        offset += fingerprintLength;
+        if (this.publicKeyVersion >= 5) {
+          // For v5/6 the Key ID is the high-order 64 bits of the fingerprint.
+          this.publicKeyID.read(this.publicKeyFingerprint);
+        } else {
+          // For v4 The Key ID is the low-order 64 bits of the fingerprint.
+          this.publicKeyID.read(this.publicKeyFingerprint.subarray(-8));
+        }
       } else {
-        this.publicKeyID.read(this.publicKeyFingerprint.subarray(-8));
+        // The size may also be zero, and the key version and 
+        // fingerprint omitted for an "anonymous recipient" 
+        this.publicKeyID = KeyID.wildcard();
       }
     } else {
       this.publicKeyID.read(bytes.subarray(offset, offset + 8));
@@ -108,8 +115,15 @@ class PublicKeyEncryptedSessionKeyPacket {
     ];
 
     if (this.version === 6) {
-      arr.push(new Uint8Array([this.publicKeyVersion]));
-      arr.push(this.publicKeyFingerprint);
+      if (this.publicKeyFingerprint !== null) {
+        arr.push(new Uint8Array([
+          this.publicKeyFingerprint.length + 1, 
+          this.publicKeyVersion]
+        ));
+        arr.push(this.publicKeyFingerprint);
+      } else {
+        arr.push(new Uint8Array([0]));
+      }
     } else {
       arr.push(this.publicKeyID.write());
     }

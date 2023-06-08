@@ -473,6 +473,7 @@ module.exports = () => describe('Packet', function() {
 
     return crypto.generateParams(rsa, keySize, 65537).then(function({ publicParams, privateParams }) {
       const enc = new openpgp.PublicKeyEncryptedSessionKeyPacket();
+      enc.version = 3
       const msg = new openpgp.PacketList();
       const msg2 = new openpgp.PacketList();
 
@@ -522,6 +523,7 @@ module.exports = () => describe('Packet', function() {
     key = key[0];
 
     const enc = new openpgp.PublicKeyEncryptedSessionKeyPacket();
+    enc.version = 3
     const secret = new Uint8Array([1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2]);
 
     enc.sessionKey = secret;
@@ -597,6 +599,115 @@ module.exports = () => describe('Packet', function() {
       const text = await stringify(msg[1].packets[0].packets[0].data);
 
       expect(text).to.equal('Hello world!');
+    });
+  });
+
+  it('Public key encrypted packet (reading, v6)', async function() {
+    // RSA v6 decryption key and signed/encrypted message produced by gopenpgp
+    // msg: PKESKv6 SEIPDv2(OPSv6|LD|SIGv6)
+    const armored_key =
+        '-----BEGIN PGP PRIVATE KEY BLOCK-----\n' +
+        '\n' +
+        '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\n' +
+        'SCfmYTfS6Q9zsjOIRaR/OBxpCaF6\n' +
+        '=Xrur\n' +
+        '-----END PGP PRIVATE KEY BLOCK-----';
+
+    const armored_msg =
+        '-----BEGIN PGP MESSAGE-----\n' +
+        '\n' +
+        'wcBmBiEG+C4NM9PbGvO2RyLA9hVrFkKck2riJ5ydxrHEDCHIFtIBB/9gRZ8oeVyv\n' +
+        'kDMWG0fZFRkbnoSIkwbklwMOD1obnkwSAxRhcsKlZ+xXDMfFKbC//mtZ0Vj3I2Ys\n' +
+        'h25/IZ3qn5MxiisO1xl++qfCMnI7+y1ETwd6qGyusNXQPAReU5jUNNfy/NKChSIo\n' +
+        's/3VbB1w63mN2M2Mytm1GF2ujwT3MqXKSs4tvcLgtwSnKYPTDkj/xS7vwOHjdyTg\n' +
+        'Jc4c6B2+Fy98kD780LWF0x0sAVPSc+lbw0tsND6IwgSI2OLbdcTnNHafvr60VKB5\n' +
+        '33oFK95bECPCnKNwIcq2vOJ6/WmPvpGE6NlJfTFm0n2hJlKgV9KJNC5oHGSFCNMw\n' +
+        'xmzlGdbHq/Ap0sEcAgcDDAj9CmjD1Irn624SUkVRAFWs2kusRxJQUETtP72oehfL\n' +
+        'NHAAFccQfKY9JGsIkZf5bh3vG51CU4+C1LNPbqxC8qD/0/I6CnWuCqJu5S1Mbsqr\n' +
+        'jp6gm5hYh/SfqNfKgdU0NZ4EkgoVWXILidFSeSIdO08XeX/NcJ96YSxt4qITfawm\n' +
+        'Gf5hCukONkI9KP5io+Q5WWa0DhOlpMjTLxtzvBpGdM7TU853lpv3I19yuV4XZP05\n' +
+        'NCwdDbI16BqlnmwBBTTwgqh8zhcPfml8AiKsMAjN3pUu0tL5mKfwxtnYrwX4RQvt\n' +
+        'Dh/RlBcFHA0a8qGjuZZZCEXUhUM4J5q0kx1X5r3arYaV9vhvO0rprMHrGdKCxOkh\n' +
+        'pNVCwt1AUFgijccuHYyjl+pecQdhuHGbYwaMVMbJ9IoYYJ9fjLiSATG51dVZmKi9\n' +
+        'Pyjb6hXnWKMJJfTSbjZvYHHOedRbZGGBFs/JPWA1CBiNIkJyIOelI8cMiRvMlWVT\n' +
+        'TD2VXAwDnQ3u2sFXY7uRKdMsxkWIeMpy0j5Ib28KCjxCsvop2H2D1r4gcKFl+L49\n' +
+        'VqW+RfTZYTRV6dn5OEdcjX2nQNQAIjD+W24VnCzzGqF6H/3Hix9mK5wh4+2o3EjQ\n' +
+        'SiSZpkBEbHk=\n' +
+        '=U0DE\n' +
+        '-----END PGP MESSAGE-----';
+
+    let key = new openpgp.PacketList();
+    await key.read((await openpgp.unarmor(armored_key)).data, allAllowedPackets);
+    key = key[4];
+
+    const msg = new openpgp.PacketList();
+    await msg.read((await openpgp.unarmor(armored_msg)).data, allAllowedPackets);
+
+    return msg[0].decrypt(key).then(async () => {
+      await msg[1].decrypt(msg[0].sessionKeyAlgorithm, msg[0].sessionKey);
+
+      const text = await stringify(msg[1].packets[1].data);
+
+      expect(text).to.equal('Hello there');
     });
   });
 

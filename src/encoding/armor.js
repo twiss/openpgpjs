@@ -289,7 +289,11 @@ export function armor(messageType, body, partIndex, partTotal, customComment, co
       break;
     case enums.armor.signed:
       result.push('-----BEGIN PGP SIGNED MESSAGE-----\n');
-      result.push('Hash: ' + hash + '\n\n');
+      if (hash) {
+        result.push('Hash: ' + hash + '\n\n');
+      } else {
+        result.push('\n');
+      }
       result.push(text.replace(/^-/mg, '- -'));
       result.push('\n-----BEGIN PGP SIGNATURE-----\n');
       result.push(addheader(customComment, config));

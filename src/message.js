@@ -432,8 +432,9 @@ export class Message {
         if (aeadAlgorithm) {
           pkESKeyPacket.version = 6;
           pkESKeyPacket.publicKeyVersion = wildcard ? 0 : encryptionKey.keyPacket.version;
-          pkESKeyPacket.publicKeyFingerprint = wildcard ? new Uint8Array() : encryptionKey.keyPacket.getFingerprintBytes();
+          pkESKeyPacket.publicKeyFingerprint = wildcard ? null : encryptionKey.keyPacket.getFingerprintBytes();
         } else {
+          pkESKeyPacket.version = 3;
           pkESKeyPacket.publicKeyID = wildcard ? KeyID.wildcard() : encryptionKey.getKeyID();
         }
         pkESKeyPacket.publicKeyAlgorithm = encryptionKey.keyPacket.algorithm;
@@ -498,6 +499,7 @@ export class Message {
    */
   async sign(signingKeys = [], signature = null, signingKeyIDs = [], date = new Date(), userIDs = [], notations = [], config = defaultConfig) {
     const packetlist = new PacketList();
+    const signatureSalts = [];
 
     const literalDataPacket = this.packets.findPacket(enums.packet.literalData);
     if (!literalDataPacket) {
@@ -515,10 +517,15 @@ export class Message {
       for (i = existingSigPacketlist.length - 1; i >= 0; i--) {
         const signaturePacket = existingSigPacketlist[i];
         const onePassSig = new OnePassSignaturePacket();
+        onePassSig.version = signaturePacket.version === 6 ? 6 : 3;
         onePassSig.signatureType = signaturePacket.signatureType;
         onePassSig.hashAlgorithm = signaturePacket.hashAlgorithm;
         onePassSig.publicKeyAlgorithm = signaturePacket.publicKeyAlgorithm;
         onePassSig.issuerKeyID = signaturePacket.issuerKeyID;
+        if (onePassSig.version === 6) {
+          onePassSig.salt = signaturePacket.salt;
+          onePassSig.issuerFingerprint = signaturePacket.issuerFingerprint;
+        }
         if (!signingKeys.length && i === 0) {
           onePassSig.flags = 1;
         }
@@ -533,20 +540,26 @@ export class Message {
       const signingKeyID = signingKeyIDs[signingKeys.length - 1 - i];
       const signingKey = await primaryKey.getSigningKey(signingKeyID, date, userIDs, config);
       const onePassSig = new OnePassSignaturePacket();
+      onePassSig.version = signingKey.keyPacket.version === 6 ? 6 : 3;
       onePassSig.signatureType = signatureType;
       onePassSig.hashAlgorithm = await getPreferredHashAlgo(primaryKey, signingKey.keyPacket, date, userIDs, config);
       onePassSig.publicKeyAlgorithm = signingKey.keyPacket.algorithm;
       onePassSig.issuerKeyID = signingKey.getKeyID();
+      if (onePassSig.version === 6) {
+        onePassSig.issuerFingerprint = signingKey.keyPacket.fingerprint;
+        await onePassSig.generateSalt();
+      }
       if (i === signingKeys.length - 1) {
         onePassSig.flags = 1;
       }
       return onePassSig;
     })).then(onePassSignatureList => {
       onePassSignatureList.forEach(onePassSig => packetlist.push(onePassSig));
+      onePassSignatureList.forEach(onePassSig => signatureSalts.push(onePassSig.salt));
     });
 
     packetlist.push(literalDataPacket);
-    packetlist.push(...(await createSignaturePackets(literalDataPacket, signingKeys, signature, signingKeyIDs, date, userIDs, notations, false, config)));
+    packetlist.push(...(await createSignaturePackets(literalDataPacket, signingKeys, signature, signingKeyIDs, date, userIDs, notations, signatureSalts, false, config)));
 
     return new Message(packetlist);
   }
@@ -589,7 +602,7 @@ export class Message {
     if (!literalDataPacket) {
       throw new Error('No literal data packet to sign.');
     }
-    return new Signature(await createSignaturePackets(literalDataPacket, signingKeys, signature, signingKeyIDs, date, userIDs, notations, true, config));
+    return new Signature(await createSignaturePackets(literalDataPacket, signingKeys, signature, signingKeyIDs, date, userIDs, notations, [], true, config));
   }
 
   /**
@@ -723,13 +736,14 @@ export class Message {
  * @param {Date} [date] - Override the creationtime of the signature
  * @param {Array} [userIDs] - User IDs to sign with, e.g. [{ name:'Steve Sender', email:'steve@openpgp.org' }]
  * @param {Array} [notations] - Notation Data to add to the signatures, e.g. [{ name: 'test@example.org', value: new TextEncoder().encode('test'), humanReadable: true, critical: false }]
+ * @param {Array} [signatureSalts] - A list of signature salts matching the number of signingKeys that should be used for v6 signatures
  * @param {Boolean} [detached] - Whether to create detached signature packets
  * @param {Object} [config] - Full configuration, defaults to openpgp.config
  * @returns {Promise<PacketList>} List of signature packets.
  * @async
  * @private
  */
-export async function createSignaturePackets(literalDataPacket, signingKeys, signature = null, signingKeyIDs = [], date = new Date(), userIDs = [], notations = [], detached = false, config = defaultConfig) {
+export async function createSignaturePackets(literalDataPacket, signingKeys, signature = null, signingKeyIDs = [], date = new Date(), userIDs = [], notations = [], signatureSalts = [], detached = false, config = defaultConfig) {
   const packetlist = new PacketList();
 
   // If data packet was created from Uint8Array, use binary, otherwise use text
@@ -742,7 +756,8 @@ export async function createSignaturePackets(literalDataPacket, signingKeys, sig
       throw new Error('Need private key for signing');
     }
     const signingKey = await primaryKey.getSigningKey(signingKeyIDs[i], date, userID, config);
-    return createSignaturePacket(literalDataPacket, primaryKey, signingKey.keyPacket, { signatureType }, date, userID, notations, detached, config);
+    const salt = signatureSalts.length === signingKeys.length ? signatureSalts[i] : undefined
+    return createSignaturePacket(literalDataPacket, primaryKey, signingKey.keyPacket, { signatureType }, date, userID, notations, salt, detached, config);
   })).then(signatureList => {
     packetlist.push(...signatureList);
   });

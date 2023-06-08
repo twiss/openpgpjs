@@ -287,7 +287,7 @@ async function wrapKeyObject(secretKeyPacket, secretSubkeyPackets, options, conf
     signatureType: enums.signature.keyRevocation,
     reasonForRevocationFlag: enums.reasonForRevocation.noReason,
     reasonForRevocationString: ''
-  }, options.date, undefined, undefined, undefined, config));
+  }, options.date, undefined, undefined, undefined, undefined, config));
 
   if (options.passphrase) {
     secretKeyPacket.clearPrivateParams();

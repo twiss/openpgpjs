@@ -96,7 +96,7 @@ export async function createBindingSignature(subkey, primaryKey, options, config
     subkeySignaturePacket.keyFlags = [enums.keyFlags.signData];
     subkeySignaturePacket.embeddedSignature = await createSignaturePacket(dataToSign, null, subkey, {
       signatureType: enums.signature.keyBinding
-    }, options.date, undefined, undefined, undefined, config);
+    }, options.date, undefined, undefined, undefined, undefined, config);
   } else {
     subkeySignaturePacket.keyFlags = [enums.keyFlags.encryptCommunication | enums.keyFlags.encryptStorage];
   }
@@ -209,11 +209,12 @@ export async function getPreferredCipherSuite(keys = [], date = new Date(), user
  * @param {Date} [date] - Override the creationtime of the signature
  * @param {Object} [userID] - User ID
  * @param {Array} [notations] - Notation Data to add to the signature, e.g. [{ name: 'test@example.org', value: new TextEncoder().encode('test'), humanReadable: true, critical: false }]
+ * @param {Object} [salt] - A predefined salt that should be used for a v6 signature
  * @param {Object} [detached] - Whether to create a detached signature packet
  * @param {Object} config - full configuration
  * @returns {Promise<SignaturePacket>} Signature packet.
  */
-export async function createSignaturePacket(dataToSign, privateKey, signingKeyPacket, signatureProperties, date, userID, notations = [], detached = false, config) {
+export async function createSignaturePacket(dataToSign, privateKey, signingKeyPacket, signatureProperties, date, userID, notations = [], salt = null, detached = false, config) {
   if (signingKeyPacket.isDummy()) {
     throw new Error('Cannot sign with a gnu-dummy key.');
   }
@@ -222,6 +223,7 @@ export async function createSignaturePacket(dataToSign, privateKey, signingKeyPa
   }
   const signaturePacket = new SignaturePacket();
   Object.assign(signaturePacket, signatureProperties);
+  signaturePacket.salt = salt
   signaturePacket.publicKeyAlgorithm = signingKeyPacket.algorithm;
   signaturePacket.hashAlgorithm = await getPreferredHashAlgo(privateKey, signingKeyPacket, date, userID, config);
   signaturePacket.rawNotations = notations;
