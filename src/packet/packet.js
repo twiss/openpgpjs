@@ -111,154 +111,138 @@ export function supportsStreaming(tag) {
  * Generic static Packet Parser function
  *
  * @param {Uint8Array | ReadableStream<Uint8Array>} input - Input stream as string
- * @param {Function} callback - Function to call with the parsed packet
- * @returns {Boolean} Returns false if the stream was empty and parsing is done, and true otherwise.
+ * @param {'web'|'array'} useStreamType - Which stream type to use for the packet body
  */
-export async function readPacket(reader, useStreamType, callback) {
-  let writer;
-  let callbackReturned;
-  try {
-    const peekedBytes = await reader.peekBytes(2);
-    // some sanity checks
-    if (!peekedBytes || peekedBytes.length < 2 || (peekedBytes[0] & 0x80) === 0) {
-      throw new Error('Error during parsing. This message / key probably does not conform to a valid OpenPGP format.');
-    }
-    const headerByte = await reader.readByte();
-    let tag = -1;
-    let format = -1;
-    let packetLength;
+export async function readPacket(reader, useStreamType) {
+  // eslint-disable-next-line no-async-promise-executor
+  return new Promise(async (resolve, reject) => {
+    let writer;
+    try {
+      const peekedBytes = await reader.peekBytes(2);
+      // some sanity checks
+      if (!peekedBytes || peekedBytes.length < 2 || (peekedBytes[0] & 0x80) === 0) {
+        throw new Error('Error during parsing. This message / key probably does not conform to a valid OpenPGP format.');
+      }
+      const headerByte = await reader.readByte();
+      let tag = -1;
+      let format = -1;
+      let packetLength;
 
-    format = 0; // 0 = old format; 1 = new format
-    if ((headerByte & 0x40) !== 0) {
-      format = 1;
-    }
+      format = 0; // 0 = old format; 1 = new format
+      if ((headerByte & 0x40) !== 0) {
+        format = 1;
+      }
 
-    let packetLengthType;
-    if (format) {
-      // new format header
-      tag = headerByte & 0x3F; // bit 5-0
-    } else {
-      // old format header
-      tag = (headerByte & 0x3F) >> 2; // bit 5-2
-      packetLengthType = headerByte & 0x03; // bit 1-0
-    }
+      let packetLengthType;
+      if (format) {
+        // new format header
+        tag = headerByte & 0x3F; // bit 5-0
+      } else {
+        // old format header
+        tag = (headerByte & 0x3F) >> 2; // bit 5-2
+        packetLengthType = headerByte & 0x03; // bit 1-0
+      }
 
-    const packetSupportsStreaming = supportsStreaming(tag);
-    let packet = null;
-    if (useStreamType && packetSupportsStreaming) {
+      let body = null;
       if (useStreamType === 'array') {
         const arrayStream = new ArrayStream();
         writer = streamGetWriter(arrayStream);
-        packet = arrayStream;
+        body = arrayStream;
       } else {
         const transform = new TransformStream();
         writer = streamGetWriter(transform.writable);
-        packet = transform.readable;
+        body = transform.readable;
       }
-      // eslint-disable-next-line callback-return
-      callbackReturned = callback({ tag, packet });
-    } else {
-      packet = [];
-    }
+      resolve({ tag, body });
 
-    let wasPartialLength;
-    do {
-      if (!format) {
-        // 4.2.1. Old Format Packet Lengths
-        switch (packetLengthType) {
-          case 0:
-            // The packet has a one-octet length. The header is 2 octets
-            // long.
-            packetLength = await reader.readByte();
-            break;
-          case 1:
-            // The packet has a two-octet length. The header is 3 octets
-            // long.
-            packetLength = (await reader.readByte() << 8) | await reader.readByte();
-            break;
-          case 2:
-            // The packet has a four-octet length. The header is 5
-            // octets long.
+      const packetSupportsStreaming = supportsStreaming(tag);
+      let wasPartialLength;
+      do {
+        if (!format) {
+          // 4.2.1. Old Format Packet Lengths
+          switch (packetLengthType) {
+            case 0:
+              // The packet has a one-octet length. The header is 2 octets
+              // long.
+              packetLength = await reader.readByte();
+              break;
+            case 1:
+              // The packet has a two-octet length. The header is 3 octets
+              // long.
+              packetLength = (await reader.readByte() << 8) | await reader.readByte();
+              break;
+            case 2:
+              // The packet has a four-octet length. The header is 5
+              // octets long.
+              packetLength = (await reader.readByte() << 24) | (await reader.readByte() << 16) | (await reader.readByte() <<
+                8) | await reader.readByte();
+              break;
+            default:
+              // 3 - The packet is of indeterminate length. The header is 1
+              // octet long, and the implementation must determine how long
+              // the packet is. If the packet is in a file, this means that
+              // the packet extends until the end of the file. In general,
+              // an implementation SHOULD NOT use indeterminate-length
+              // packets except where the end of the data will be clear
+              // from the context, and even then it is better to use a
+              // definite length, or a new format header. The new format
+              // headers described below have a mechanism for precisely
+              // encoding data of indeterminate length.
+              packetLength = Infinity;
+              break;
+          }
+        } else { // 4.2.2. New Format Packet Lengths
+          // 4.2.2.1. One-Octet Lengths
+          const lengthByte = await reader.readByte();
+          wasPartialLength = false;
+          if (lengthByte < 192) {
+            packetLength = lengthByte;
+            // 4.2.2.2. Two-Octet Lengths
+          } else if (lengthByte >= 192 && lengthByte < 224) {
+            packetLength = ((lengthByte - 192) << 8) + (await reader.readByte()) + 192;
+            // 4.2.2.4. Partial Body Lengths
+          } else if (lengthByte > 223 && lengthByte < 255) {
+            packetLength = 1 << (lengthByte & 0x1F);
+            wasPartialLength = true;
+            if (!packetSupportsStreaming) {
+              throw new TypeError('This packet type does not support partial lengths.');
+            }
+            // 4.2.2.3. Five-Octet Lengths
+          } else {
             packetLength = (await reader.readByte() << 24) | (await reader.readByte() << 16) | (await reader.readByte() <<
               8) | await reader.readByte();
-            break;
-          default:
-            // 3 - The packet is of indeterminate length. The header is 1
-            // octet long, and the implementation must determine how long
-            // the packet is. If the packet is in a file, this means that
-            // the packet extends until the end of the file. In general,
-            // an implementation SHOULD NOT use indeterminate-length
-            // packets except where the end of the data will be clear
-            // from the context, and even then it is better to use a
-            // definite length, or a new format header. The new format
-            // headers described below have a mechanism for precisely
-            // encoding data of indeterminate length.
-            packetLength = Infinity;
-            break;
-        }
-      } else { // 4.2.2. New Format Packet Lengths
-        // 4.2.2.1. One-Octet Lengths
-        const lengthByte = await reader.readByte();
-        wasPartialLength = false;
-        if (lengthByte < 192) {
-          packetLength = lengthByte;
-          // 4.2.2.2. Two-Octet Lengths
-        } else if (lengthByte >= 192 && lengthByte < 224) {
-          packetLength = ((lengthByte - 192) << 8) + (await reader.readByte()) + 192;
-          // 4.2.2.4. Partial Body Lengths
-        } else if (lengthByte > 223 && lengthByte < 255) {
-          packetLength = 1 << (lengthByte & 0x1F);
-          wasPartialLength = true;
-          if (!packetSupportsStreaming) {
-            throw new TypeError('This packet type does not support partial lengths.');
-          }
-          // 4.2.2.3. Five-Octet Lengths
-        } else {
-          packetLength = (await reader.readByte() << 24) | (await reader.readByte() << 16) | (await reader.readByte() <<
-            8) | await reader.readByte();
-        }
-      }
-      if (packetLength > 0) {
-        let bytesRead = 0;
-        while (true) {
-          if (writer) await writer.ready;
-          const { done, value } = await reader.read();
-          if (done) {
-            if (packetLength === Infinity) break;
-            throw new Error('Unexpected end of packet');
-          }
-          const chunk = packetLength === Infinity ? value : value.subarray(0, packetLength - bytesRead);
-          if (writer) await writer.write(chunk);
-          else packet.push(chunk);
-          bytesRead += value.length;
-          if (bytesRead >= packetLength) {
-            reader.unshift(value.subarray(packetLength - bytesRead + value.length));
-            break;
           }
         }
-      }
-    } while (wasPartialLength);
+        if (packetLength > 0) {
+          let bytesRead = 0;
+          while (true) {
+            await writer.ready;
+            const { done, value } = await reader.read();
+            if (done) {
+              if (packetLength === Infinity) break;
+              throw new Error('Unexpected end of packet');
+            }
+            const chunk = packetLength === Infinity ? value : value.subarray(0, packetLength - bytesRead);
+            await writer.write(chunk);
+            bytesRead += value.length;
+            if (bytesRead >= packetLength) {
+              reader.unshift(value.subarray(packetLength - bytesRead + value.length));
+              break;
+            }
+          }
+        }
+      } while (wasPartialLength);
 
-    if (writer) {
       await writer.ready;
       await writer.close();
-    } else {
-      packet = util.concatUint8Array(packet);
-      // eslint-disable-next-line callback-return
-      await callback({ tag, packet });
+    } catch (e) {
+      if (writer) {
+        await writer.abort(e);
+      } else {
+        reject(e);
+      }
     }
-  } catch (e) {
-    if (writer) {
-      await writer.abort(e);
-      return true;
-    } else {
-      throw e;
-    }
-  } finally {
-    if (writer) {
-      await callbackReturned;
-    }
-  }
+  });
 }
 
 export class UnsupportedError extends Error {
