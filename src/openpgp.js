@@ -15,7 +15,7 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
-import { fromAsync as streamFromAsync, concat as streamConcat, transformPair as streamTransformPair, pipe as streamPipe, readToEnd as streamReadToEnd, getWriter as streamGetWriter } from '@openpgp/web-stream-tools';
+import { fromAsync as streamFromAsync, concat as streamConcat, transformPair as streamTransformPair, pipe as streamPipe, readToEnd as streamReadToEnd, consumeToEnd as streamConsumeToEnd, getWriter as streamGetWriter } from '@openpgp/web-stream-tools';
 import { Message } from './message';
 import { CleartextMessage } from './cleartext';
 import { generate, reformat, getPreferredCompressionAlgo } from './key';
@@ -437,7 +437,7 @@ export async function sign({ message, signingKeys, recipientKeys = [], format = 
       signature = streamTransformPair(message.packets.write(), async (readable, writable) => {
         await Promise.all([
           streamPipe(signature, writable),
-          streamReadToEnd(readable).catch(() => {})
+          streamConsumeToEnd(readable).catch(() => {})
         ]);
       });
     }
@@ -707,8 +707,8 @@ function linkStreams(result, inputMessage, ...intermediateMessages) {
     const writer = streamGetWriter(writable);
     try {
       // Forward errors in the message streams to result.data.
-      await streamReadToEnd(readable, _ => _);
-      await Promise.all(intermediateMessages.map(intermediate => streamReadToEnd(intermediate.packets.stream, _ => _)));
+      await streamConsumeToEnd(readable, _ => _);
+      await Promise.all(intermediateMessages.map(intermediate => streamConsumeToEnd(intermediate.packets.stream, _ => _)));
       // if result.data throws, the writable will be in errored state, and `close()` fails, but its ok.
       await writer.close();
     } catch (e) {

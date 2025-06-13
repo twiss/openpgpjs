@@ -1,4 +1,4 @@
-import { transformPair as streamTransformPair, transform as streamTransform, getWriter as streamGetWriter, getReader as streamGetReader, readToEnd as streamReadToEnd, clone as streamClone, passiveClone as streamPassiveClone } from '@openpgp/web-stream-tools';
+import { transformPair as streamTransformPair, transform as streamTransform, getWriter as streamGetWriter, getReader as streamGetReader, readToEnd as streamReadToEnd, consumeToEnd as streamConsumeToEnd, clone as streamClone, passiveClone as streamPassiveClone } from '@openpgp/web-stream-tools';
 import {
   readPacket, supportsStreaming,
   writeTag, writeHeader,
@@ -86,7 +86,7 @@ class PacketList extends Array {
           let unauthenticatedError;
           // eslint-disable-next-line prefer-const
           let { tag, body } = await readPacket(reader, useStreamType);
-          const bodyEnd = streamReadToEnd(streamPassiveClone(body)).then(() => {});
+          const bodyEnd = streamConsumeToEnd(streamPassiveClone(body)).then(() => {});
           parse: try {
             if (tag === enums.packet.marker || tag === enums.packet.trust || tag === enums.packet.padding) {
               // According to the spec, these packet types should be ignored and not cause parsing errors, even if not explicitly allowed:
@@ -126,7 +126,7 @@ class PacketList extends Array {
             await writer.write(packet);
           } catch (e) {
             // Consume the body stream so that the passive clone progresses.
-            await streamReadToEnd(body);
+            await streamConsumeToEnd(body);
 
             // If an implementation encounters a critical packet where the packet type is unknown in a packet sequence,
             // it MUST reject the whole packet sequence. On the other hand, an unknown non-critical packet MUST be ignored.
@@ -180,7 +180,7 @@ class PacketList extends Array {
           // If there was a parse error, read the entire input first
           // in case there's an MDC error, which should take precedence.
           if (unauthenticatedError) {
-            await reader.readToEnd();
+            await reader.consumeToEnd();
             // eslint-disable-next-line @typescript-eslint/no-throw-literal
             throw unauthenticatedError;
           }

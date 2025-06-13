@@ -613,7 +613,7 @@ export class Message {
             const { value: signature } = await reader.read();
             onePassSigList[i].correspondingSigResolve(signature);
           }
-          await reader.readToEnd();
+          await reader.consumeToEnd();
           await writer.ready;
           await writer.close();
         } catch (e) {
